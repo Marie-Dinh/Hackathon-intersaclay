@@ -1,9 +1,11 @@
-@ -0,0 +1,174 @@
 import streamlit as st
 from classification import process
 from config import ensure_api_key
 import random
 import datetime
+
+from retrieve_document import extract_text_from_pdf, extract_document
+from project_types import TypeDocument, TypeTache
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AssurAI Winner Demo", layout="wide")
@@ -16,6 +18,9 @@ if "analysis" not in st.session_state:
 
 if "sent" not in st.session_state:
     st.session_state.sent = False
+
+if "documents" not in st.session_state:
+    st.session_state.documents = []
 
 # ---------------- HEADER ----------------
 st.title("🥇 AssurAI — AI Insurance Copilot")
@@ -56,10 +61,25 @@ audio = st.audio_input("🎤 Message vocal")
 
 file = st.file_uploader("📎 Pièce jointe", type=["png","jpg","pdf","txt"])
 
+
 # ---------------- ANALYSE ----------------
 if st.button("🚀 Analyse IA"):
 
-    context = text
+    # Agent qui classifie vers quel macro tâche on est (Contrats, Process, Demande)
+    task_type = "document_contractuel"
+
+    # Agent qui classifie quel type de document à utiliser
+
+    doc_type = "tableau_des_garanties"
+    # Agent qui classifie le process à décrire
+
+    # Agent qui check quelles demandes utilisés 
+
+    if task_type==TypeTache.DOCUMENT_CONTRACTUEL:
+        if doc_type==TypeDocument.TABLEAU_DES_GARANTIES:
+            st.session_state.documents.append(extract_document(doc_type))
+
+    context = "\n".join(st.session_state.documents) + "\nInput utilisateur:\n" + text
 
     if audio:
         context += "\n[TRANSCRIPTION AUDIO CLIENT]"
@@ -71,7 +91,8 @@ if st.button("🚀 Analyse IA"):
         st.warning("Veuillez fournir une information.")
         st.stop()
 
-    with st.spinner("Analyse IA..."):
+    # Call LLM + context
+    with st.spinner("Analyse IA..."): 
         result = process(context)
 
     st.session_state.analysis = result
