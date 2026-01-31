@@ -69,7 +69,6 @@ audio = st.audio_input("🎤 Message vocal")
 
 file = st.file_uploader("📎 Pièce jointe", type=["png","jpg","pdf","txt"])
 
-
 # ---------------- ANALYSE ----------------
 if st.button("🚀 Analyse IA"):
 
@@ -102,8 +101,16 @@ if st.button("🚀 Analyse IA"):
         st.warning("Veuillez fournir une information.")
         st.stop()
 
+    file_bytes = None
+    file_name = None
+    if file:
+        file_bytes = file.read()
+        file_name = file.name
+
     # Call LLM + context
     with st.spinner("Analyse IA..."): 
+        st.write(f"[DEBUG] sending_to_process | text_len={len(context)} | file={file.name if file else None} | bytes={len(file_bytes) if file_bytes else 0}")
+        
         try:
             agent_result = run_agent_sync(st.session_state.agent, context, st.session_state.agent_deps).output
         except Exception as e:
@@ -116,7 +123,8 @@ if st.button("🚀 Analyse IA"):
             context += "\n Actions de l'agent :" + agent_result
             print("agent result added to context in first interaction")
             print(agent_result)
-        result = process(context)
+        result = process(context, file_bytes=file_bytes, file_name=file_name)
+        st.write(f"[DEBUG] process_return | blocked={result.get('blocked')} | pii_found={result.get('pii_found')}")
 
     st.session_state.analysis = result
     st.session_state.history.append(context)

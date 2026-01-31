@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()  # charge .env AVANT de lire les variables
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-latest")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
+print(f"[CONFIG] model={CLAUDE_MODEL} key_present={bool(ANTHROPIC_API_KEY)}", file=sys.stderr)
 
 
 def ensure_api_key() -> bool:

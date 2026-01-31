@@ -2,6 +2,9 @@
 from typing import Optional, Dict, Any, List
 import os
 import json
+from security_layer import prepare_safe_payload
+import logging; logging.basicConfig(level=logging.INFO); log = logging.getLogger("assurai")
+
 from anthropic import Anthropic  # pip install anthropic
 
 from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
@@ -10,6 +13,8 @@ from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 def build_claude_client() -> Optional[Anthropic]:
     """Crée un client Claude (Anthropic). Utilise ANTHROPIC_API_KEY si présent."""
     api_key = ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY")
+    log.info("build_claude_client | model=%s | key_present=%s", CLAUDE_MODEL, bool(api_key))  # debug config
+
     if not api_key:
         return None
     return Anthropic(api_key=api_key)  # conforme à l'exemple officiel
@@ -41,6 +46,7 @@ Règles :
 def generate_customer_reply(user_message: str) -> str:
     """1er appel : génère la réponse destinée au client."""
     client = build_claude_client()
+    log.info("generate_customer_reply | input_len=%d", len(user_message))  # taille entrée (sans contenu)
     if client is None:
         return "⚠️ Impossible d'appeler Claude : clé API manquante."
 
@@ -51,6 +57,7 @@ def generate_customer_reply(user_message: str) -> str:
         messages=[{"role": "user", "content": user_message}],
         temperature=0.3,
     )
+    log.info("generate_customer_reply | ok | blocks=%d", len(getattr(msg, "content", []) or []))  # réponse reçue
     return _extract_text(msg)
 
 
@@ -121,7 +128,7 @@ def classify(text_to_classify: str) -> Dict[str, Any]:
             "resume_1_phrase": "Clé API manquante : classification non réalisée.",
             "confiance": 0.0,
         }
-
+    log.info("classify | input_len=%d | schema_keys=%d", len(text_to_classify), len(CLASSIFICATION_SCHEMA.get("properties", {})))  # debug schema
     msg = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=300,
@@ -138,6 +145,7 @@ def classify(text_to_classify: str) -> Dict[str, Any]:
     )
 
     raw_json = _extract_text(msg)
+    log.info("classify | raw_json=%s", raw_json[:300].replace("\n", "\\n"))  # tronqué (évite fuite)
     #print("DEBUG raw_json:", repr(raw_json))
     data = json.loads(raw_json)
 
@@ -146,13 +154,56 @@ def classify(text_to_classify: str) -> Dict[str, Any]:
         c = float(data.get("confiance", 0.0))
     except (TypeError, ValueError):
         c = 0.0
-        data["confiance"] = max(0.0, min(1.0, c))
+    data["confiance"] = max(0.0, min(1.0, c))
 
+    log.info("classify | result | motif=%s domaine=%s confiance=%.2f", data.get("motif"), data.get("domaine"), float(data.get("confiance", 0.0)))  # sortie structurée
     return data
 
 
-def process(user_message: str) -> Dict[str, Any]:
-    """Pipeline complet : réponse client + classification exploitable par votre SI."""
-    reply = generate_customer_reply(user_message)
-    classification = classify(f"DEMANDE CLIENT:\n{user_message}\n\nREPONSE ASSISTANT:\n{reply}")
-    return {"reply": reply, "classification": classification}
+def process(user_message: str, file_bytes: bytes = None, file_name: str = None) -> Dict[str, Any]:
+    log.info("process | start | msg_len=%d", len(user_message))  # début pipeline
+
+    """
+    Pipeline complet : sécurisation -> réponse -> classification.
+    Le LLM ne voit jamais les PII brutes (redaction).
+    """
+    safe = prepare_safe_payload(
+        user_message=user_message,
+        file_bytes=file_bytes,
+        file_name=file_name,
+        hard_block=False,  # mets True si tu veux bloquer IBAN/NIR/carte
+    )
+    log.info("security | pii_found=%s | blocked=%s", getattr(safe, "pii_found", None), getattr(safe, "blocked", None))  # privacy-by-design
+
+
+    # Si tu veux bloquer en cas de données très sensibles :
+    if safe.blocked:
+        return {
+            "reply": "⚠️ Votre message contient des données très sensibles (IBAN/NIR/carte). "
+                     "Merci de les retirer avant de continuer.",
+            "classification": {
+                "motif": "AUTRE",
+                "domaine": "INCONNU",
+                "intention": "INFORMATION",
+                "priorite": "NORMALE",
+                "ton_client": "CALME",
+                "actions_recommandees": ["DEMANDER_INFOS"],
+                "infos_a_collecter": [],
+                "resume_1_phrase": "Blocage sécurité: données sensibles détectées.",
+                "confiance": 0.0,
+            },
+            "pii_found": safe.pii_found,
+            "blocked": True,
+            "block_reason": safe.block_reason,
+        }
+
+    reply = generate_customer_reply(safe.text)
+    classification = classify(f"DEMANDE CLIENT:\n{safe.text}\n\nREPONSE ASSISTANT:\n{reply}")
+
+    return {
+        "reply": reply,
+        "classification": classification,
+        "pii_found": safe.pii_found,
+        "blocked": False,
+        "block_reason": None,
+    }
