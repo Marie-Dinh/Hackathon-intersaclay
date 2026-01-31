@@ -3,9 +3,10 @@ from classification import process
 from config import ensure_api_key
 import random
 import datetime
-
+from agent import AgentContext, init_agent, run_agent_sync
 from retrieve_document import extract_text_from_pdf, extract_document
 from project_types import TypeDocument, TypeTache
+import traceback
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AssurAI Winner Demo", layout="wide")
@@ -21,6 +22,13 @@ if "sent" not in st.session_state:
 
 if "documents" not in st.session_state:
     st.session_state.documents = []
+
+if "agent" not in st.session_state:
+    st.session_state.agent = init_agent()
+
+if "agent_deps" not in st.session_state:
+    st.session_state.agent_deps = AgentContext(user_id="USER_001")
+
 
 # ---------------- HEADER ----------------
 st.title("🥇 AssurAI — AI Insurance Copilot")
@@ -68,8 +76,6 @@ if st.button("🚀 Analyse IA"):
     # Agent qui classifie vers quel macro tâche on est (Contrats, Process, Demande)
     task_type = "document_contractuel"
 
-    # Agent qui classifie quel type de document à utiliser
-
     doc_type = "tableau_des_garanties"
     
     # Agent qui classifie le process à décrire
@@ -83,8 +89,9 @@ if st.button("🚀 Analyse IA"):
     elif task_type==TypeTache.DEMANDES:
         raise ValueError(f"Not implemented yet for {task_type}")
 
-    context = "\n".join(st.session_state.documents) + "\nInput utilisateur:\n" + text
+    # context = "\n".join(st.session_state.documents) + "\nInput utilisateur:\n" + text
 
+    context = "\Contexte utilisateur:\n" + text
     if audio:
         context += "\n[TRANSCRIPTION AUDIO CLIENT]"
 
@@ -97,6 +104,18 @@ if st.button("🚀 Analyse IA"):
 
     # Call LLM + context
     with st.spinner("Analyse IA..."): 
+        try:
+            agent_result = run_agent_sync(st.session_state.agent, context, st.session_state.agent_deps).output
+        except Exception as e:
+            print(str(e))
+            print(traceback.format_exc())
+            
+            agent_result = None
+        
+        if agent_result is not None:
+            context += "\n Actions de l'agent :" + agent_result
+            print("agent result added to context in first interaction")
+            print(agent_result)
         result = process(context)
 
     st.session_state.analysis = result
@@ -178,7 +197,20 @@ if st.session_state.analysis:
         st.session_state.history.append(follow)
 
         with st.spinner("Mise à jour analyse..."):
-            result = process("\n".join(st.session_state.history))
+            history_context = "\n".join(st.session_state.history)
+            try:
+                agent_result = run_agent_sync(st.session_state.agent, history_context, st.session_state.agent_deps).output
+            except Exception as e:
+                print(str(e))
+                print(traceback.format_exc())
+            
+                agent_result = None
+            
+            if agent_result is not None:
+                history_context += "\n Actions de l'agent :" + agent_result
+                print("agent result added to context in complementary info")
+                print(agent_result)
+            result = process(history_context)
 
         st.session_state.analysis = result
         st.rerun()
