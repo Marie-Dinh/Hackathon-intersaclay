@@ -86,3 +86,10 @@ Score de couverture probable
 
 Hackathon IA – Hackathon Inter Saclay 
 Sponsor : AGRICA
+
+
+# Données
+
+Téléchargez les données dont le lien est disponible dans le google doc de l'équipe.
+Le corpus utilisé est : Corpus_Offres-Produits_AGRICA/Régime d'adhésion
+Ce corpus est ensuite déposé dans un dossier data/espace_client simulant les documents du clients.

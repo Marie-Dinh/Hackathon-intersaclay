@@ -71,13 +71,17 @@ if st.button("🚀 Analyse IA"):
     # Agent qui classifie quel type de document à utiliser
 
     doc_type = "tableau_des_garanties"
+    
     # Agent qui classifie le process à décrire
 
     # Agent qui check quelles demandes utilisés 
 
     if task_type==TypeTache.DOCUMENT_CONTRACTUEL:
-        if doc_type==TypeDocument.TABLEAU_DES_GARANTIES:
-            st.session_state.documents.append(extract_document(doc_type))
+        st.session_state.documents.append(extract_document(doc_type))
+    elif task_type==TypeTache.PROCESSUS_INTERNE:
+        raise ValueError(f"Not implemented yet for {task_type}")
+    elif task_type==TypeTache.DEMANDES:
+        raise ValueError(f"Not implemented yet for {task_type}")
 
     context = "\n".join(st.session_state.documents) + "\nInput utilisateur:\n" + text
 
